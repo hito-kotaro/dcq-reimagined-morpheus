@@ -1,0 +1,104 @@
+name: Deploy to Amazon ECS
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: ap-northeast-1
+  ECR_REPOSITORY: morpheus
+  ECS_SERVICE: morpheus-service
+  ECS_CLUSTER: morpheus-cluster-dev
+  ECS_TASK_DEFINITION: docker/ecs-task.json
+  DOCKERFILE: docker/Dockerfile
+  CONTAINER_NAME: morpheus-service
+  ACTION_ROLE: github-actions-role
+  PATH_CACHE: ~/.github/cache
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: GetTag
+        id: variables
+        run: echo "::set-output name=version::${GITHUB_REF##*/}"
+
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.ACTION_ROLE }}
+          aws-region: ap-northeast-1
+
+      - name: Create image tag
+        id: imagetag
+        run: |
+          HASH_IMAGE=${{ hashFiles('infrastructure/api/Dockerfile') }}
+          VARIANT=$(TZ=UTC-9 date '+Y%m')${HASH_IMAGE:0:7}
+          NAME_IMAGE=${{ env.ECR_REPOSITORY }}
+          TAG="${NAME_IMAGE}:${VARIANT}"
+          NAME_TAR="${NAME_IMAGE}.${VARIANT}.tar"
+          PATH_TAR=${{ env.PATH_CACHE }}"/${NAME_TAR}"
+          echo "::set-output name=TAG::${TAG}"
+          echo "::set-output name=PATH_TAR::${PATH_TAR}"
+
+      - name: Enable cache
+        id: cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ env.PATH_CACHE }}
+          key: ${{ steps.imagetag.outputs.TAG }}
+
+      - name: Load Docker image if exists
+        if: steps.cache.outputs.cache-hit == 'true'
+        run: docker load --input ${{ steps.imagetag.outputs.PATH_TAR }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build Docker image and save
+        id: build-image
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.variables.outputs.version }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+        run: |
+          mkdir -p ${{ env.PATH_CACHE }}
+          docker build -f $DOCKERFILE -t ${{ steps.imagetag.outputs.TAG }} .
+          docker images
+          docker tag ${{ steps.imagetag.outputs.TAG }} $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker save --output ${{ steps.imagetag.outputs.PATH_TAR }} ${{ steps.imagetag.outputs.TAG }}
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo $GITHUB_OUTPUT
+          ls ${{ env.PATH_CACHE }}
+          echo ${{ env.PATH_CACHE }}
+          echo ${{ env.PATH_TAR }}
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.ECS_TASK_DEFINITION }}
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.variables.outputs.version }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true

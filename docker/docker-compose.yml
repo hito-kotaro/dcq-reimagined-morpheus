@@ -1,0 +1,38 @@
+version: '3'
+
+services:
+  db:
+    image: postgres:latest
+    container_name: morpheus_db
+    ports:
+      - 5432:5432
+    volumes:
+      - db_store:/var/lib/postgresql/data
+      - ./scripts:/docker-entrypoint-initdb.d
+    networks:
+      - morheus-nw
+    environment:
+      - POSTGRES_USER=app
+      - POSTGRES_PASSWORD=password
+  api:
+    depends_on:
+      - db
+    container_name: morpheus_api
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile
+    tty: true
+    ports:
+      - '3000:3000'
+    volumes:
+      - type: bind
+        source: ../
+        target: /morpheus
+    networks:
+      - morheus-nw
+    env_file:
+      - .env.local
+volumes:
+  db_store:
+networks:
+  morheus-nw:
