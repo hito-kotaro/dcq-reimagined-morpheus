@@ -1,8 +1,8 @@
 {
   "containerDefinitions": [
     {
-      "name": "morphus-service",
-      "image": "665378081513.dkr.ecr.ap-northeast-1.amazonaws.com/morpheus-repo:latest",
+      "name": "morpheus-service",
+      "image": "665378081513.dkr.ecr.ap-northeast-1.amazonaws.com/morpheus-repo",
       "cpu": 0,
       "portMappings": [
         {
@@ -19,14 +19,14 @@
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/morphus-serivce",
+          "awslogs-group": "/ecs/morpheus-service",
           "awslogs-region": "ap-northeast-1",
           "awslogs-stream-prefix": "ecs"
         }
       }
     }
   ],
-  "family": "morphus-serivce",
+  "family": "morpheus-service",
   "executionRoleArn": "arn:aws:iam::665378081513:role/ecsTaskExecutionRole",
   "networkMode": "awsvpc",
   "volumes": [],
