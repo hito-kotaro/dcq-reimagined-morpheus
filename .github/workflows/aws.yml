@@ -15,6 +15,9 @@ env:
   CONTAINER_NAME: morpheus-service
   ACTION_ROLE: github-actions-role
   PATH_CACHE: ~/.github/cache
+  APPSPEC: docker/appspec.yml
+  CODEDEPLOY_APP: AppECS-morpheus-cluster-dev-morpheus-service
+  CODEDEPLOY_GROUP: DgpECS-morpheus-cluster-dev-morpheus-service
 
 permissions:
   id-token: write
@@ -101,4 +104,7 @@ jobs:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
+          codedeploy-appspec: ${{ env.APPSPEC }}
+          codedeploy-application: ${{env.CODEDEPLOY_APP}}
+          codedeploy-deployment-group: ${{env.CODEDEPLOY_GROUP}}
           wait-for-service-stability: true
